@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Variant-Gene Knowledge Graph</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      background: #111827;
+      border-right: 1px solid #1f2937;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar h1 {
+      font-size: 20px;
+      margin: 0 0 14px 0;
+      color: #ffffff;
+    }
+
+    .sidebar h2 {
+      font-size: 14px;
+      margin: 18px 0 8px 0;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .control-group {
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: #d1d5db;
+    }
+
+    input[type="text"],
+    select,
+    button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #374151;
+      background: #1f2937;
+      color: #f9fafb;
+      font-size: 14px;
+      outline: none;
+    }
+
+    input[type="text"]::placeholder {
+      color: #94a3b8;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.12);
+    }
+
+    button {
+      cursor: pointer;
+      transition: 0.15s ease;
+    }
+
+    button:hover {
+      background: #273449;
+    }
+
+    .stats,
+    .details {
+      background: #0b1220;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+
+    .stats div,
+    .details div {
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .details-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .small-note {
+      font-size: 12px;
+      color: #93c5fd;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    .main {
+      position: relative;
+      background: #020617;
+      overflow: hidden;
+    }
+
+    #graph {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .graph-title {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      z-index: 10;
+      color: #e5e7eb;
+    }
+
+    .legend {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      z-index: 10;
+      color: #e5e7eb;
+      min-width: 180px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .message {
+      position: absolute;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #cbd5e1;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px;
+      color: #f8fafc;
+      font-size: 12px;
+      line-height: 1.5;
+      max-width: 380px;
+      opacity: 0;
+      transition: opacity 0.1s ease;
+      z-index: 20;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .tooltip strong {
+      color: #ffffff;
+    }
+
+    .center-status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #cbd5e1;
+      font-size: 16px;
+      z-index: 1;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>Variant-Gene Graph</h1>
+
+      <h2>Search</h2>
+
+      <div class="control-group">
+        <label for="searchNode">Search variant or gene</label>
+        <input
+          id="searchNode"
+          type="text"
+          list="nodeSuggestions"
+          placeholder="Example: rs4291, ACE, haplotype, kinase"
+        />
+        <datalist id="nodeSuggestions"></datalist>
+      </div>
+
+      <h2>Filters</h2>
+
+      <div class="control-group">
+        <label for="geneFamilyFilter">Primary Gene Family</label>
+        <select id="geneFamilyFilter">
+          <option value="all">All</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="maxNodes">Max Nodes to Render</label>
+        <select id="maxNodes">
+          <option value="1000" selected>1000</option>
+          <option value="2000">2000</option>
+          <option value="3000">3000</option>
+          <option value="4000">4000</option>
+          <option value="5000">5000</option>
+          <option value="7500">7500</option>
+          <option value="10000">10000</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <button id="resetBtn">Reset</button>
+      </div>
+
+      <div class="stats">
+        <div><strong>Raw nodes:</strong> <span id="rawNodes">0</span></div>
+        <div><strong>Raw links:</strong> <span id="rawLinks">0</span></div>
+        <div><strong>Visible nodes:</strong> <span id="visibleNodes">0</span></div>
+        <div><strong>Visible links:</strong> <span id="visibleLinks">0</span></div>
+      </div>
+
+      <div class="details">
+        <div class="details-title">Details</div>
+        <div id="detailsContent">Hover or click a node/link to see details.</div>
+      </div>
+
+    </aside>
+
+    <main class="main">
+      <div class="graph-title">Variant-Gene Knowledge Graph</div>
+
+      <div class="legend">
+        <div class="legend-row">
+          <span class="legend-dot" style="background:#a855f7;"></span>
+          <span>Variant node</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-dot" style="background:#f59e0b;"></span>
+          <span>Gene node</span>
+        </div>
+        <div class="legend-row">
+          <span style="display:inline-block;width:12px;height:2px;background:#64748b;"></span>
+          <span>Variant-gene link</span>
+        </div>
+      </div>
+
+      <div id="message" class="message">Loading graph...</div>
+      <div id="centerStatus" class="center-status">Loading variant–gene graph...</div>
+      <svg id="graph"></svg>
+      <div id="tooltip" class="tooltip"></div>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      rawGraph: null,
+      filteredGraph: null,
+      selectedNodeId: null,
+      simulation: null,
+      zoomLayer: null
+    };
+
+    const svg = d3.select("#graph");
+    const tooltip = d3.select("#tooltip");
+
+    const searchNodeEl = document.getElementById("searchNode");
+    const nodeSuggestionsEl = document.getElementById("nodeSuggestions");
+    const geneFamilyFilterEl = document.getElementById("geneFamilyFilter");
+    const maxNodesEl = document.getElementById("maxNodes");
+    const resetBtn = document.getElementById("resetBtn");
+
+    const rawNodesEl = document.getElementById("rawNodes");
+    const rawLinksEl = document.getElementById("rawLinks");
+    const visibleNodesEl = document.getElementById("visibleNodes");
+    const visibleLinksEl = document.getElementById("visibleLinks");
+    const detailsContentEl = document.getElementById("detailsContent");
+    const messageEl = document.getElementById("message");
+    const centerStatusEl = document.getElementById("centerStatus");
+
+    function getGraphSize() {
+      const rect = document.querySelector(".main").getBoundingClientRect();
+      return {
+        width: rect.width,
+        height: rect.height
+      };
+    }
+
+    function safeValue(value) {
+      if (value === null || value === undefined || value === "") return "N/A";
+      if (Array.isArray(value)) return value.length ? value.join(", ") : "N/A";
+      return String(value);
+    }
+
+    function toArray(value) {
+      if (Array.isArray(value)) {
+        return value.filter(v => v !== null && v !== undefined && String(v).trim() !== "");
+      }
+      if (value === null || value === undefined || value === "") return [];
+      return [value];
+    }
+
+    function normalizeGraph(graph) {
+      const nodes = (graph.nodes || []).map(n => ({
+        ...n,
+        id: String(n.id),
+        label: n.label || n.name || n.id,
+        type: n.type || n.group || "unknown",
+        gene_symbol: n.gene_symbol || null,
+        hgnc_name: n.hgnc_name || null,
+        gene_family: toArray(n.gene_family),
+        primary_gene_family: n.primary_gene_family || null,
+        gene_family_id: toArray(n.gene_family_id),
+        gene_family_match_source: n.gene_family_match_source || null,
+        rsid: n.rsid || null,
+        haplotype: n.haplotype || null,
+        variant_id: n.variant_id || null,
+        variant_type: n.variant_type || null,
+        variant_key: n.variant_key || null,
+        in_clinical_variants_tsv: Boolean(n.in_clinical_variants_tsv),
+        in_interactions_tsv: Boolean(n.in_interactions_tsv),
+        in_relationships_tsv: Boolean(n.in_relationships_tsv)
+      }));
+
+      const nodeMap = new Map(nodes.map(n => [String(n.id), n]));
+
+      const links = (graph.links || graph.edges || []).map((l, i) => {
+        const sourceId = typeof l.source === "object" ? String(l.source.id) : String(l.source);
+        const targetId = typeof l.target === "object" ? String(l.target.id) : String(l.target);
+
+        return {
+          ...l,
+          id: l.id || `link_${i}`,
+          source: sourceId,
+          target: targetId,
+          relation: l.relation || "variant-gene",
+          source_type: l.source_type || null,
+          target_type: l.target_type || null,
+          variant_id: l.variant_id || null,
+          variant_type: l.variant_type || null,
+          rsid: l.rsid || null,
+          haplotype: l.haplotype || null,
+          gene_symbol: l.gene_symbol || null,
+          hgnc_name: l.hgnc_name || null,
+          gene_family: toArray(l.gene_family),
+          primary_gene_family: l.primary_gene_family || null,
+          gene_family_id: toArray(l.gene_family_id),
+          gene_family_match_source: l.gene_family_match_source || null,
+          in_clinical_variants_tsv: Boolean(l.in_clinical_variants_tsv),
+          in_interactions_tsv: Boolean(l.in_interactions_tsv),
+          in_relationships_tsv: Boolean(l.in_relationships_tsv)
+        };
+      }).filter(l => nodeMap.has(l.source) && nodeMap.has(l.target));
+
+      return {
+        nodes,
+        links
+      };
+    }
+
+    function uniqueSorted(values) {
+      return Array.from(
+        new Set(values.filter(v => v !== null && v !== undefined && String(v).trim() !== ""))
+      ).sort((a, b) => String(a).localeCompare(String(b)));
+    }
+
+    function populateSuggestions() {
+      if (!state.rawGraph) return;
+
+      nodeSuggestionsEl.innerHTML = "";
+
+      const suggestions = [];
+      state.rawGraph.nodes.forEach(node => {
+        suggestions.push(node.label);
+        if (node.gene_symbol) suggestions.push(node.gene_symbol);
+        if (node.hgnc_name) suggestions.push(node.hgnc_name);
+        if (node.rsid) suggestions.push(node.rsid);
+        if (node.haplotype) suggestions.push(node.haplotype);
+        node.gene_family.forEach(gf => suggestions.push(gf));
+        if (node.primary_gene_family) suggestions.push(node.primary_gene_family);
+      });
+
+      uniqueSorted(suggestions).slice(0, 4000).forEach(value => {
+        const option = document.createElement("option");
+        option.value = value;
+        nodeSuggestionsEl.appendChild(option);
+      });
+    }
+
+    function populateGeneFamilyFilter() {
+      if (!state.rawGraph) return;
+
+      const families = [];
+      state.rawGraph.nodes.forEach(node => {
+        if (node.primary_gene_family) families.push(node.primary_gene_family);
+      });
+      state.rawGraph.links.forEach(link => {
+        if (link.primary_gene_family) families.push(link.primary_gene_family);
+      });
+
+      const uniqueFamilies = uniqueSorted(families);
+
+      geneFamilyFilterEl.innerHTML = `<option value="all">All</option>`;
+      uniqueFamilies.forEach(family => {
+        const option = document.createElement("option");
+        option.value = family;
+        option.textContent = family;
+        geneFamilyFilterEl.appendChild(option);
+      });
+    }
+
+    function loadGraph(graph) {
+      state.rawGraph = normalizeGraph(graph);
+      state.selectedNodeId = null;
+
+      rawNodesEl.textContent = state.rawGraph.nodes.length;
+      rawLinksEl.textContent = state.rawGraph.links.length;
+
+      populateSuggestions();
+      populateGeneFamilyFilter();
+      applyFilters();
+
+      centerStatusEl.style.display = "none";
+      setMessage("Graph loaded successfully.");
+    }
+
+    function applyFilters() {
+      if (!state.rawGraph) return;
+
+      const searchKeyword = searchNodeEl.value.trim().toLowerCase();
+      const selectedFamily = geneFamilyFilterEl.value;
+      const maxNodes = Number(maxNodesEl.value);
+
+      const nodeMap = new Map(state.rawGraph.nodes.map(n => [n.id, n]));
+
+      let links = state.rawGraph.links.filter(link => {
+        const familyOk =
+          selectedFamily === "all" ||
+          link.primary_gene_family === selectedFamily ||
+          link.gene_family.includes(selectedFamily);
+
+        return familyOk;
+      });
+
+      let nodes = [];
+      let allowedNodeIds = new Set();
+
+      if (state.selectedNodeId && nodeMap.has(state.selectedNodeId)) {
+        const focusId = state.selectedNodeId;
+
+        const neighborLinks = links.filter(
+          l => l.source === focusId || l.target === focusId
+        );
+
+        allowedNodeIds = new Set([focusId]);
+        neighborLinks.forEach(l => {
+          allowedNodeIds.add(l.source);
+          allowedNodeIds.add(l.target);
+        });
+
+        links = neighborLinks;
+        nodes = state.rawGraph.nodes.filter(n => allowedNodeIds.has(n.id));
+      } else if (searchKeyword) {
+        const matchedNodes = state.rawGraph.nodes.filter(node => {
+          const haystacks = [
+            node.label,
+            node.id,
+            node.gene_symbol,
+            node.hgnc_name,
+            node.rsid,
+            node.haplotype,
+            node.primary_gene_family,
+            ...node.gene_family
+          ].filter(Boolean).map(v => String(v).toLowerCase());
+
+          return haystacks.some(text => text.includes(searchKeyword));
+        });
+
+        if (matchedNodes.length === 0) {
+          nodes = [];
+          links = [];
+        } else {
+          const matchedIds = new Set(matchedNodes.map(n => n.id));
+          allowedNodeIds = new Set(matchedIds);
+
+          links.forEach(link => {
+            if (matchedIds.has(link.source)) allowedNodeIds.add(link.target);
+            if (matchedIds.has(link.target)) allowedNodeIds.add(link.source);
+          });
+
+          nodes = state.rawGraph.nodes.filter(n => allowedNodeIds.has(n.id));
+          links = links.filter(
+            l => allowedNodeIds.has(l.source) && allowedNodeIds.has(l.target)
+          );
+        }
+      } else {
+        links.forEach(link => {
+          allowedNodeIds.add(link.source);
+          allowedNodeIds.add(link.target);
+        });
+        nodes = state.rawGraph.nodes.filter(n => allowedNodeIds.has(n.id));
+      }
+
+      if (nodes.length > maxNodes) {
+        const degreeMap = new Map();
+        nodes.forEach(n => degreeMap.set(n.id, 0));
+        links.forEach(l => {
+          degreeMap.set(l.source, (degreeMap.get(l.source) || 0) + 1);
+          degreeMap.set(l.target, (degreeMap.get(l.target) || 0) + 1);
+        });
+
+        const sortedNodes = [...nodes].sort((a, b) => {
+          const degreeDiff = (degreeMap.get(b.id) || 0) - (degreeMap.get(a.id) || 0);
+          if (degreeDiff !== 0) return degreeDiff;
+          return a.label.localeCompare(b.label);
+        });
+
+        const keepIds = new Set();
+
+        if (state.selectedNodeId && nodeMap.has(state.selectedNodeId)) {
+          keepIds.add(state.selectedNodeId);
+        }
+
+        for (const node of sortedNodes) {
+          if (keepIds.size >= maxNodes) break;
+          keepIds.add(node.id);
+        }
+
+        links = links.filter(l => keepIds.has(l.source) && keepIds.has(l.target));
+
+        const linkedNodeIds = new Set();
+        links.forEach(l => {
+          linkedNodeIds.add(l.source);
+          linkedNodeIds.add(l.target);
+        });
+
+        if (state.selectedNodeId && keepIds.has(state.selectedNodeId)) {
+          linkedNodeIds.add(state.selectedNodeId);
+        }
+
+        nodes = nodes.filter(n => linkedNodeIds.has(n.id));
+      }
+
+      const visibleDegreeMap = new Map();
+      nodes.forEach(n => visibleDegreeMap.set(n.id, 0));
+      links.forEach(l => {
+        visibleDegreeMap.set(l.source, (visibleDegreeMap.get(l.source) || 0) + 1);
+        visibleDegreeMap.set(l.target, (visibleDegreeMap.get(l.target) || 0) + 1);
+      });
+
+      const finalNodes = nodes.map(n => ({
+        ...n,
+        degree: visibleDegreeMap.get(n.id) || 0
+      }));
+
+      state.filteredGraph = {
+        nodes: finalNodes,
+        links
+      };
+
+      visibleNodesEl.textContent = finalNodes.length;
+      visibleLinksEl.textContent = links.length;
+
+      if (finalNodes.length === 0) {
+        centerStatusEl.style.display = "flex";
+        centerStatusEl.textContent = "No nodes match the current filters.";
+      } else {
+        centerStatusEl.style.display = "none";
+      }
+
+      drawGraph();
+    }
+
+    function drawGraph() {
+      const { width, height } = getGraphSize();
+
+      svg.selectAll("*").remove();
+      svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+      const zoomLayer = svg.append("g");
+      state.zoomLayer = zoomLayer;
+
+      const zoom = d3.zoom()
+        .scaleExtent([0.2, 4])
+        .on("zoom", (event) => {
+          zoomLayer.attr("transform", event.transform);
+        });
+
+      svg.call(zoom);
+
+      if (!state.filteredGraph || state.filteredGraph.nodes.length === 0) {
+        return;
+      }
+
+      const nodes = state.filteredGraph.nodes.map(n => ({ ...n }));
+      const links = state.filteredGraph.links.map(l => ({ ...l }));
+      const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+      function getNodeFromEndpoint(endpoint) {
+        if (!endpoint) return null;
+        if (typeof endpoint === "object") return endpoint;
+        return nodeMap.get(String(endpoint)) || null;
+      }
+
+      const link = zoomLayer
+        .append("g")
+        .attr("stroke", "#64748b")
+        .attr("stroke-opacity", 0.65)
+        .selectAll("line")
+        .data(links)
+        .join("line")
+        .attr("stroke-width", 1.8)
+        .on("mouseover", function(event, d) {
+          d3.select(this)
+            .attr("stroke", "#cbd5e1")
+            .attr("stroke-width", 3);
+
+          const sourceNode = getNodeFromEndpoint(d.source);
+          const targetNode = getNodeFromEndpoint(d.target);
+
+          const sourceLabel = safeValue(sourceNode?.label);
+          const targetLabel = safeValue(targetNode?.label);
+          const sourceType = String(sourceNode?.type || "").toLowerCase();
+          const targetType = String(targetNode?.type || "").toLowerCase();
+
+          const variantName = sourceType === "variant"
+            ? sourceLabel
+            : (targetType === "variant" ? targetLabel : "N/A");
+
+          const geneName = sourceType === "gene"
+            ? sourceLabel
+            : (targetType === "gene" ? targetLabel : safeValue(d.gene_symbol));
+
+          showTooltip(event, `
+            <strong>Link</strong><br>
+            Variant: ${variantName}<br>
+            Gene: ${geneName}<br>
+            RSID: ${safeValue(d.rsid)}<br>
+            Haplotype: ${safeValue(d.haplotype)}<br>
+            Variant Type: ${safeValue(d.variant_type)}<br>
+            HGNC Name: ${safeValue(d.hgnc_name)}<br>
+            Gene Family: ${safeValue(d.gene_family)}<br>
+            Primary Gene Family: ${safeValue(d.primary_gene_family)}<br>
+            Gene Family Match Source: ${safeValue(d.gene_family_match_source)}<br>
+            Clinical Variants TSV: ${safeValue(d.in_clinical_variants_tsv)}<br>
+            Interactions TSV: ${safeValue(d.in_interactions_tsv)}<br>
+            Relationships TSV: ${safeValue(d.in_relationships_tsv)}
+          `);
+
+          detailsContentEl.innerHTML = `
+            <div><strong>Variant:</strong> ${variantName}</div>
+            <div><strong>Gene:</strong> ${geneName}</div>
+            <div><strong>RSID:</strong> ${safeValue(d.rsid)}</div>
+            <div><strong>Haplotype:</strong> ${safeValue(d.haplotype)}</div>
+            <div><strong>Variant Type:</strong> ${safeValue(d.variant_type)}</div>
+            <div><strong>HGNC Name:</strong> ${safeValue(d.hgnc_name)}</div>
+            <div><strong>Gene Family:</strong> ${safeValue(d.gene_family)}</div>
+            <div><strong>Primary Gene Family:</strong> ${safeValue(d.primary_gene_family)}</div>
+            <div><strong>Gene Family Match Source:</strong> ${safeValue(d.gene_family_match_source)}</div>
+            <div><strong>Clinical Variants TSV:</strong> ${safeValue(d.in_clinical_variants_tsv)}</div>
+            <div><strong>Interactions TSV:</strong> ${safeValue(d.in_interactions_tsv)}</div>
+            <div><strong>Relationships TSV:</strong> ${safeValue(d.in_relationships_tsv)}</div>
+          `;
+        })
+        .on("mousemove", moveTooltip)
+        .on("mouseout", function() {
+          d3.select(this)
+            .attr("stroke", "#64748b")
+            .attr("stroke-width", 1.8);
+
+          hideTooltip();
+        });
+
+      function getNodeColor(node) {
+        if (node.type === "variant") return "#a855f7";
+        if (node.type === "gene") return "#f59e0b";
+        return "#94a3b8";
+      }
+
+      function getNodeRadius(node) {
+        return Math.max(7, Math.min(18, 7 + node.degree * 0.5));
+      }
+
+      const node = zoomLayer
+        .append("g")
+        .selectAll("g")
+        .data(nodes)
+        .join("g")
+        .style("cursor", "pointer")
+        .call(dragBehavior());
+
+      node.append("circle")
+        .attr("r", d => getNodeRadius(d))
+        .attr("fill", d => getNodeColor(d))
+        .attr("stroke", d => d.id === state.selectedNodeId ? "#ffffff" : "#0f172a")
+        .attr("stroke-width", d => d.id === state.selectedNodeId ? 3 : 1.5)
+        .on("mouseover", function(event, d) {
+          d3.select(this)
+            .attr("stroke", "#ffffff")
+            .attr("stroke-width", 2.5);
+
+          showTooltip(event, `
+            <strong>${safeValue(d.label)}</strong><br>
+            Type: ${safeValue(d.type)}<br>
+            Gene Symbol: ${safeValue(d.gene_symbol)}<br>
+            HGNC Name: ${safeValue(d.hgnc_name)}<br>
+            RSID: ${safeValue(d.rsid)}<br>
+            Haplotype: ${safeValue(d.haplotype)}<br>
+            Variant Type: ${safeValue(d.variant_type)}<br>
+            Gene Family: ${safeValue(d.gene_family)}<br>
+            Primary Gene Family: ${safeValue(d.primary_gene_family)}<br>
+            Degree: ${safeValue(d.degree)}
+          `);
+
+          detailsContentEl.innerHTML = `
+            <div><strong>Label:</strong> ${safeValue(d.label)}</div>
+            <div><strong>Type:</strong> ${safeValue(d.type)}</div>
+            <div><strong>Gene Symbol:</strong> ${safeValue(d.gene_symbol)}</div>
+            <div><strong>HGNC Name:</strong> ${safeValue(d.hgnc_name)}</div>
+            <div><strong>RSID:</strong> ${safeValue(d.rsid)}</div>
+            <div><strong>Haplotype:</strong> ${safeValue(d.haplotype)}</div>
+            <div><strong>Variant Type:</strong> ${safeValue(d.variant_type)}</div>
+            <div><strong>Gene Family:</strong> ${safeValue(d.gene_family)}</div>
+            <div><strong>Primary Gene Family:</strong> ${safeValue(d.primary_gene_family)}</div>
+            <div><strong>Degree:</strong> ${safeValue(d.degree)}</div>
+          `;
+        })
+        .on("mousemove", moveTooltip)
+        .on("mouseout", function(event, d) {
+          d3.select(this)
+            .attr("stroke", d.id === state.selectedNodeId ? "#ffffff" : "#0f172a")
+            .attr("stroke-width", d.id === state.selectedNodeId ? 3 : 1.5);
+
+          hideTooltip();
+        })
+        .on("click", function(event, d) {
+          state.selectedNodeId = d.id;
+          searchNodeEl.value = d.label;
+          applyFilters();
+          setMessage(`Focused on: ${d.label}`);
+        });
+
+      node.append("text")
+        .text(d => d.label)
+        .attr("fill", "#ffffff")
+        .attr("font-size", "11px")
+        .attr("font-weight", 500)
+        .attr("dx", d => getNodeRadius(d) + 4)
+        .attr("dy", 4)
+        .style("pointer-events", "none");
+
+      state.simulation = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links)
+          .id(d => d.id)
+          .distance(95)
+          .strength(0.22))
+        .force("charge", d3.forceManyBody().strength(-250))
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("collide", d3.forceCollide().radius(d => getNodeRadius(d) + 18))
+        .on("tick", ticked);
+
+      function ticked() {
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        node.attr("transform", d => `translate(${d.x},${d.y})`);
+      }
+
+      function dragBehavior() {
+        return d3.drag()
+          .on("start", (event, d) => {
+            if (!event.active) state.simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x;
+            d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) state.simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+          });
+      }
+    }
+
+    function showTooltip(event, html) {
+      tooltip.style("opacity", 1).html(html);
+      moveTooltip(event);
+    }
+
+    function moveTooltip(event) {
+      tooltip
+        .style("left", `${event.pageX + 14}px`)
+        .style("top", `${event.pageY + 14}px`);
+    }
+
+    function hideTooltip() {
+      tooltip.style("opacity", 0);
+    }
+
+    function setMessage(text) {
+      messageEl.textContent = text;
+    }
+
+    async function loadDefaultJson() {
+      try {
+        setMessage("Loading variant_gene.json...");
+        centerStatusEl.style.display = "flex";
+        centerStatusEl.textContent = "Loading variant-gene graph...";
+
+        const response = await fetch("variant_gene.json");
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const graph = await response.json();
+        loadGraph(graph);
+      } catch (error) {
+        setMessage("Could not load variant_gene.json");
+        centerStatusEl.style.display = "flex";
+        centerStatusEl.textContent = "Could not load variant_gene.json. Run local server if needed.";
+        console.error(error);
+      }
+    }
+
+    function resetFilters() {
+      searchNodeEl.value = "";
+      geneFamilyFilterEl.value = "all";
+      maxNodesEl.value = "1000";
+      state.selectedNodeId = null;
+      applyFilters();
+      setMessage("Reset complete.");
+    }
+
+    resetBtn.addEventListener("click", resetFilters);
+
+    searchNodeEl.addEventListener("input", () => {
+      state.selectedNodeId = null;
+      applyFilters();
+    });
+
+    searchNodeEl.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        searchNodeEl.value = "";
+        state.selectedNodeId = null;
+        applyFilters();
+      }
+    });
+
+    geneFamilyFilterEl.addEventListener("change", () => {
+      state.selectedNodeId = null;
+      applyFilters();
+    });
+
+    maxNodesEl.addEventListener("change", applyFilters);
+
+    window.addEventListener("resize", () => {
+      if (state.filteredGraph) {
+        drawGraph();
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", loadDefaultJson);
+  </script>
+</body>
+</html>
